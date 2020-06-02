@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -49,16 +50,38 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
                 return false;
             }
 
-            var validHosts = EnvUtil.GetHostsFromEnvironment(Logger, EnvUtil.SupportedHostsEnvVar, new[]
-            {
-                ".pkgs.vsts.me", // DevFabric
-                ".pkgs.codedev.ms", // DevFabric
-                ".pkgs.codeapp.ms", // AppFabric
-                ".pkgs.visualstudio.com", // Prod
-                ".pkgs.dev.azure.com" // Prod
-            });
+             var validHosts = EnvUtil.GetHostsFromEnvironment(Logger, EnvUtil.SupportedHostsEnvVar, new[]
+             {
+                 ".pkgs.vsts.me", // DevFabric
+                 ".pkgs.codedev.ms", // DevFabric
+                 ".pkgs.codeapp.ms", // AppFabric
+                 ".pkgs.visualstudio.com", // Prod
+                 ".pkgs.dev.azure.com" // Prod
+             });
 
-            return validHosts.Any(host => uri.Host.EndsWith(host, StringComparison.OrdinalIgnoreCase)) || await authUtil.IsVstsUriAsync(uri);
+            bool isValidHost = validHosts.Any(host => uri.Host.EndsWith(host, StringComparison.OrdinalIgnoreCase));
+            if (isValidHost)
+            {
+                Verbose("Uri is a valid host for this credential provider.");
+                return true;
+            }
+
+            var isAzureDevOpsUri = await authUtil.IsVstsUriAsync(uri);
+            if (isAzureDevOpsUri)
+            {
+                Verbose("Uri returned valid Azure DevOps headers.");
+                return true;
+            }
+
+            // TODO: Check if this is on prem here. 
+            // This can maybe be done using WWWAuhenticate headers?
+
+            // If on prem, you cannot get new creds for them automatically so that must be skipped if on prem (no automatic fetch~).
+            // device flow/ dialog should still be usable on prem
+            // (on windowns, Negotiate thing may be used but that's not the case in other OSs so interactive is a requirement)
+
+
+            return false;
         }
 
         public override async Task<GetAuthenticationCredentialsResponse> HandleRequestAsync(GetAuthenticationCredentialsRequest request, CancellationToken cancellationToken)

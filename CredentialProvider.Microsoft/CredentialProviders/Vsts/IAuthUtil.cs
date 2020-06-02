@@ -3,6 +3,7 @@
 // Licensed under the MIT license.
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -26,12 +27,15 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
     {
         public const string VssResourceTenant = "X-VSS-ResourceTenant";
         public const string VssAuthorizationEndpoint = "X-VSS-AuthorizationEndpoint";
+        public const string TfsServiceError = "X-TFS-ServiceError";
 
         private readonly ILogger logger;
+        private readonly bool isOnPremise;
 
         public AuthUtil(ILogger logger)
         {
             this.logger = logger;
+            this.isOnPremise = false;
         }
 
         public async Task<Uri> GetAadAuthorityUriAsync(Uri uri, CancellationToken cancellationToken)
@@ -44,7 +48,6 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
 
             var headers = await GetResponseHeadersAsync(uri, cancellationToken);
             var bearerHeaders = headers.WwwAuthenticate.Where(x => x.Scheme.Equals("Bearer", StringComparison.Ordinal));
-
             foreach (var param in bearerHeaders)
             {
                 if (param.Parameter == null)
@@ -75,13 +78,15 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
 
         public async Task<bool> IsVstsUriAsync(Uri uri)
         {
-            if (!IsValidScheme(uri))
-            {
-                // We are not talking to a https endpoint so it cannot be a VSTS endpoint
-                return false;
-            }
-
+            // Ping the url to see from headers whether it's an Azure Artifacts feed
             var responseHeaders = await GetResponseHeadersAsync(uri, cancellationToken: default);
+
+            if (!IsHttpsScheme(uri))
+            {
+                // Azure DevOps Server (on prem) expects http vs https.
+                // Uri should return 401 (TFS service error) if it's an Azure DevOps Server instance.
+                return responseHeaders.Contains(TfsServiceError);
+            }
 
             return responseHeaders.Contains(VssResourceTenant) && responseHeaders.Contains(VssAuthorizationEndpoint);
         }
@@ -141,7 +146,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             return ppeHosts.Any(host => uri.Host.EndsWith(host, StringComparison.OrdinalIgnoreCase));
         }
 
-        private bool IsValidScheme(Uri uri)
+        private bool IsHttpsScheme(Uri uri)
         {
             try
             {
