@@ -32,7 +32,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             return (await adalTokenProvider.AcquireTokenSilentlyAsync(cancellationToken))?.AccessToken;
         }
 
-        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog)
+        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog, bool isOnPrem)
         {
             return !isRetry;
         }
@@ -58,9 +58,11 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             return (await adalTokenProvider.AcquireTokenWithWindowsIntegratedAuth(cancellationToken))?.AccessToken;
         }
 
-        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog)
+        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog, bool isOnPrem)
         {
-            return WindowsIntegratedAuthUtils.SupportsWindowsIntegratedAuth() && EnvUtil.WindowsIntegratedAuthenticationEnabled();
+            return WindowsIntegratedAuthUtils.SupportsWindowsIntegratedAuth() 
+                && EnvUtil.WindowsIntegratedAuthenticationEnabled() 
+                && !isOnPrem;
         }
     }
 
@@ -87,7 +89,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             return (await adalTokenProvider.AcquireTokenWithUI(cancellationToken))?.AccessToken;
         }
 
-        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog)
+        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog, bool isOnPrem)
         {
 #if NETFRAMEWORK
             return !isNonInteractive && canShowDialog && RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -131,7 +133,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
                     logger))?.AccessToken;
         }
 
-        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog)
+        public bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog, bool isOnPrem)
         {
             return !isNonInteractive;
         }
@@ -146,7 +148,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
 
         bool Interactive { get; }
 
-        bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog);
+        bool ShouldRun(bool isRetry, bool isNonInteractive, bool canShowDialog, bool isOnPrem);
 
         Task<string> GetTokenAsync(Uri uri, CancellationToken cancellationToken);
     }

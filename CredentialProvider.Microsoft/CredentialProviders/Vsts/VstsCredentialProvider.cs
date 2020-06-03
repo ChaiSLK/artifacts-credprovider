@@ -17,6 +17,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
     public sealed class VstsCredentialProvider : CredentialProviderBase
     {
         private const string Username = "VssSessionToken";
+        private bool IsOnPrem = false;
 
         private readonly IAuthUtil authUtil;
         private readonly IBearerTokenProvidersFactory bearerTokenProvidersFactory;
@@ -62,24 +63,17 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             bool isValidHost = validHosts.Any(host => uri.Host.EndsWith(host, StringComparison.OrdinalIgnoreCase));
             if (isValidHost)
             {
-                Verbose("Uri is a valid host for this credential provider.");
+                Verbose(string.Format(Resources.HostAccepted, uri.Host));
                 return true;
             }
 
-            var isAzureDevOpsUri = await authUtil.IsVstsUriAsync(uri);
-            if (isAzureDevOpsUri)
+            var feedUriSource = await authUtil.GetFeedUriSource(uri);
+            IsOnPrem = (feedUriSource == IFeedUriSource.OnPrem) ? true : false;
+            if (feedUriSource == IFeedUriSource.Hosted || IsOnPrem)
             {
-                Verbose("Uri returned valid Azure DevOps headers.");
+                Verbose(Resources.ValidHeaders);
                 return true;
             }
-
-            // TODO: Check if this is on prem here. 
-            // This can maybe be done using WWWAuhenticate headers?
-
-            // If on prem, you cannot get new creds for them automatically so that must be skipped if on prem (no automatic fetch~).
-            // device flow/ dialog should still be usable on prem
-            // (on windowns, Negotiate thing may be used but that's not the case in other OSs so interactive is a requirement)
-
 
             return false;
         }
@@ -104,7 +98,7 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             // Only consider it successful if the bearer token can be exchanged for an Azure DevOps token.
             foreach (IBearerTokenProvider bearerTokenProvider in bearerTokenProviders)
             {
-                bool shouldRun = bearerTokenProvider.ShouldRun(request.IsRetry, request.IsNonInteractive, canShowDialog);
+                bool shouldRun = bearerTokenProvider.ShouldRun(request.IsRetry, request.IsNonInteractive, canShowDialog, IsOnPrem);
                 if (!shouldRun)
                 {
                     Verbose(string.Format(Resources.NotRunningBearerTokenProvider, bearerTokenProvider.Name));

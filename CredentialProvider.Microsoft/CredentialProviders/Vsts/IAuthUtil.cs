@@ -18,9 +18,16 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
     {
         Task<Uri> GetAadAuthorityUriAsync(Uri uri, CancellationToken cancellationToken);
 
-        Task<bool> IsVstsUriAsync(Uri uri);
+        Task<IFeedUriSource> GetFeedUriSource(Uri uri);
 
         Task<Uri> GetAuthorizationEndpoint(Uri uri, CancellationToken cancellationToken);
+    }
+
+    public enum IFeedUriSource
+    {
+        External,
+        Hosted,
+        OnPrem
     }
 
     public class AuthUtil : IAuthUtil
@@ -28,14 +35,12 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
         public const string VssResourceTenant = "X-VSS-ResourceTenant";
         public const string VssAuthorizationEndpoint = "X-VSS-AuthorizationEndpoint";
         public const string TfsServiceError = "X-TFS-ServiceError";
-
+        
         private readonly ILogger logger;
-        private readonly bool isOnPremise;
 
         public AuthUtil(ILogger logger)
         {
             this.logger = logger;
-            this.isOnPremise = false;
         }
 
         public async Task<Uri> GetAadAuthorityUriAsync(Uri uri, CancellationToken cancellationToken)
@@ -76,19 +81,25 @@ namespace NuGetCredentialProvider.CredentialProviders.Vsts
             return new Uri($"{aadBase}/common");
         }
 
-        public async Task<bool> IsVstsUriAsync(Uri uri)
+        public async Task<IFeedUriSource> GetFeedUriSource(Uri uri)
         {
-            // Ping the url to see from headers whether it's an Azure Artifacts feed
+            // Ping the url to see from headers whether it's an Azure Artifacts feed or external
             var responseHeaders = await GetResponseHeadersAsync(uri, cancellationToken: default);
 
-            if (!IsHttpsScheme(uri))
+            // Hosted only allows https
+            if (IsHttpsScheme(uri) && responseHeaders.Contains(VssResourceTenant) && responseHeaders.Contains(VssAuthorizationEndpoint))
             {
-                // Azure DevOps Server (on prem) expects http vs https.
-                // Uri should return 401 (TFS service error) if it's an Azure DevOps Server instance.
-                return responseHeaders.Contains(TfsServiceError);
+                return IFeedUriSource.Hosted;
             }
 
-            return responseHeaders.Contains(VssResourceTenant) && responseHeaders.Contains(VssAuthorizationEndpoint);
+            // Uri returns 401 (TFS service error) if it's an Azure DevOps Server instance.
+            if (responseHeaders.Contains(TfsServiceError))
+            {
+                return IFeedUriSource.OnPrem;
+            }
+
+            // Assume uri is from an external source if expected headers aren't present.
+            return IFeedUriSource.External;
         }
 
         public async Task<Uri> GetAuthorizationEndpoint(Uri uri, CancellationToken cancellationToken)

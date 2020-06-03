@@ -38,10 +38,10 @@ namespace CredentialProvider.Microsoft.Tests.CredentialProviders.Vsts
             mockLogger = new Mock<ILogger>();
 
             mockBearerTokenProvider1 = new Mock<IBearerTokenProvider>();
-            mockBearerTokenProvider1.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(true);
+            mockBearerTokenProvider1.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(true);
             mockBearerTokenProvider1.Setup(x => x.GetTokenAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>())).ReturnsAsync((string)null);
             mockBearerTokenProvider2 = new Mock<IBearerTokenProvider>();
-            mockBearerTokenProvider2.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(true);
+            mockBearerTokenProvider2.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(true);
             mockBearerTokenProvider2.Setup(x => x.GetTokenAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>())).ReturnsAsync((string)null);
             mockBearerTokenProvidersFactory = new Mock<IBearerTokenProvidersFactory>();
             mockBearerTokenProvidersFactory.Setup(x => x.Get(It.IsAny<string>())).Returns(new[] { mockBearerTokenProvider1.Object, mockBearerTokenProvider2.Object });
@@ -82,7 +82,7 @@ namespace CredentialProvider.Microsoft.Tests.CredentialProviders.Vsts
             }
 
             mockAuthUtil
-                .Verify(x => x.IsVstsUriAsync(It.IsAny<Uri>()), Times.Never, "because we shouldn't probe for known sources");
+                .Verify(x => x.GetFeedUriSource(It.IsAny<Uri>()), Times.Never, "because we shouldn't probe for known sources");
         }
 
         [TestMethod]
@@ -103,13 +103,35 @@ namespace CredentialProvider.Microsoft.Tests.CredentialProviders.Vsts
             }
 
             mockAuthUtil
-                .Verify(x => x.IsVstsUriAsync(It.IsAny<Uri>()), Times.Never, "because we shouldn't probe for known sources");
+                .Verify(x => x.GetFeedUriSource(It.IsAny<Uri>()), Times.Never, "because we shouldn't probe for known sources");
+
+            Environment.SetEnvironmentVariable(EnvUtil.SupportedHostsEnvVar, string.Empty);
+        }
+
+        [TestMethod]
+        public async Task CanProvideCredentials_CallsGetFeedUriSourceWhenSourcesAreInvalid()
+        {
+            var sources = new[]
+            {
+                new Uri(@"http://example.overrideOne.com/_packaging/TestFeed/nuget/v3/index.json"),
+                new Uri(@"https://example.overrideTwo.com/_packaging/TestFeed/nuget/v3/index.json"),
+                new Uri(@"https://example.overrideThre.com/_packaging/TestFeed/nuget/v3/index.json"),
+            };
+
+            foreach (var source in sources)
+            {
+                var canProvideCredentials = await vstsCredentialProvider.CanProvideCredentialsAsync(source);
+                canProvideCredentials.Should().BeFalse($"because {source} is not a valid host");
+            }
+
+            mockAuthUtil
+                .Verify(x => x.GetFeedUriSource(It.IsAny<Uri>()), Times.Exactly(3), "because sources were unknown");
         }
 
         [TestMethod]
         public async Task HandleRequestAsync_DoesNotRunBearerTokenProviderWhenShouldRunFalse()
         {
-            mockBearerTokenProvider1.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(false);
+            mockBearerTokenProvider1.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(false);
             await vstsCredentialProvider.HandleRequestAsync(new GetAuthenticationCredentialsRequest(testUri, false, false, false), CancellationToken.None);
             mockBearerTokenProvider1.Verify(x => x.GetTokenAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()), Times.Never);
         }
@@ -117,7 +139,7 @@ namespace CredentialProvider.Microsoft.Tests.CredentialProviders.Vsts
         [TestMethod]
         public async Task HandleRequestAsync_RunsBearerTokenProviderWhenShouldRunTrue()
         {
-            mockBearerTokenProvider1.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(true);
+            mockBearerTokenProvider1.Setup(x => x.ShouldRun(It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>())).Returns(true);
             await vstsCredentialProvider.HandleRequestAsync(new GetAuthenticationCredentialsRequest(testUri, false, false, false), CancellationToken.None);
             mockBearerTokenProvider1.Verify(x => x.GetTokenAsync(It.IsAny<Uri>(), It.IsAny<CancellationToken>()), Times.Once);
         }
